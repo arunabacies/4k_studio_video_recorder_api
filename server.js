@@ -66,7 +66,7 @@ function processRecorderData(channelName) {
   const outputWebmStream = fs.createWriteStream(fileName);
   webmReadable.pipe(outputWebmStream);
   outputWebmStream.on('finish', ()=>{
-    upload('webm', 'single', fs.readFileSync(fileName), fileName);
+    upload('webm', 'single', fs.readFileSync(fileName), channelName);
   })
 }
 
