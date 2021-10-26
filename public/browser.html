@@ -40,7 +40,7 @@
   const peerConnections = {};
   const config = turnConfig;
   var selAudioDevice, selVideoDevice, recorder;
-  const ndiStream = new MediaStream()
+  var ndiStream = new MediaStream()
   // Get camera and microphone
   const videoElement = document.querySelector("video");
   const audioSelect = document.querySelector("select#audioSource");
@@ -51,6 +51,7 @@
     // enable/disable buttons
     recordButton.disabled = true;
     stopButton.disabled = false;
+    // getRecordStream();
     var mime = 'video/webm';
     recorder = new MediaRecorder(stream, {
       mimeType: mime
@@ -59,7 +60,6 @@
     recorder.start(2500);
 
     recorder.ondataavailable = handleRecorderData
-
   }
 
   function stopRecording() {
@@ -74,17 +74,19 @@
   }
 
   function handleRecorderData(event) {
+    console.log(ExternalUserId, part);
+    console.log(event.data.size);
     if (event.data.size > 0) {
       console.log("recorder data available");
       console.log(event.data);
       event.data.arrayBuffer()
         .then((data) => {
-          console.log(data);
           if (!stopButton.disabled) {
+            console.log("Sending socket:::::", ExternalUserId, part);
             socket.emit("recording", data, ExternalUserId, part)
+            part++;
           }
         })
-      part++;
     }
 
   }
@@ -245,6 +247,48 @@
     return navigator.mediaDevices
       .getUserMedia(constraints)
       .then(gotStream)
+      .catch(handleError);
+  }
+
+  function getRecordStream() {
+    if (ndiStream) {
+      ndiStream.getTracks().forEach(track => {
+        track.stop();
+      });
+    }
+    const audioSource = audioSelect.value;
+    selAudioDevice = audioSelect.value;
+    const videoSource = videoSelect.value;
+    selVideoDevice = videoSelect.value;
+
+    const constraints = {
+      audio: {
+        deviceId: audioSource ? {
+          exact: audioSource
+        } : undefined,
+
+      },
+      video: {
+        deviceId: videoSource ? {
+          exact: videoSource
+        } : undefined,
+        width: 640,
+        height: 360
+      }
+    };
+    return navigator.mediaDevices
+      .getUserMedia(constraints)
+      .then((stream) => {
+        ndiStream = stream
+        var mime = 'video/webm';
+        recorder = new MediaRecorder(ndiStream, {
+          mimeType: mime
+        });
+        // make the MediaRecorder to start recording
+        recorder.start(2500);
+
+        recorder.ondataavailable = handleRecorderData
+      })
       .catch(handleError);
   }
 
