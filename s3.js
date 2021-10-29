@@ -226,6 +226,10 @@ function CompleteS3Upload(ExternalUserId) {
     else {
       console.log(data); // successful response
       console.log(ExternalUserId, " upload completed::::");
+      delete activeUploadDirectory[ExternalUserId]
+      delete streamBuffer[ExternalUserId]
+      delete completedStreamPartsInfo[ExternalUserId]
+      delete completedStreamPartsInfo['previouslyUploadedPart'][ExternalUserId]
     }
   });
   /* required */
