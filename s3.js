@@ -66,8 +66,8 @@ function InitiateNewS3Recording(ExternalUserId) {
   if (!activeUploadDirectory[ExternalUserId]) {
     console.log("Creating a new upload stream :::::", ExternalUserId);
     const bucket = new AWS.S3({
-      accessKeyId: "AKIA5WAK677JQDYQIJWV",
-      secretAccessKey: "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",
+      accessKeyId: "",
+      secretAccessKey: "",
       region: "us-east-1"
     });
     const params = {
@@ -101,8 +101,8 @@ const upload = async function uploadFilesToS3(ExternalUserId, data) {
       streamBuffer[ExternalUserId][part + 1 + ''] = [data]
       streamBuffer[ExternalUserId]['size'] = 0
       const bucket = new AWS.S3({
-        accessKeyId: "AKIA5WAK677JQDYQIJWV",
-        secretAccessKey: "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",
+        accessKeyId: "",
+        secretAccessKey: "",
         region: "us-east-1"
       });
       streamData = Buffer.concat(streamBuffer[ExternalUserId][part + '']);
@@ -156,8 +156,8 @@ let final_check = async function checkDataInStreamBuffer(ExternalUserId) {
           console.log("buffer Data found for part ", i, " ::::::::");
           let part = i
           const bucket = new AWS.S3({
-            accessKeyId: "AKIA5WAK677JQDYQIJWV",
-            secretAccessKey: "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",
+            accessKeyId: "",
+            secretAccessKey: "",
             region: "us-east-1"
           });
           streamData = Buffer.concat(streamBuffer[ExternalUserId][part + '']);
