@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Broadcaster</title>
+  <meta charset="UTF-8" />
+</head>
+
+
+<body>
+  <section class="select">
+    <label for="audioSource">Audio source: </label>
+    <select id="audioSource"></select>
+  </section>
+
+  <section class="select">
+    <label for="videoSource">Video source: </label>
+    <select id="videoSource"></select>
+  </section>
+
+  <video id="video1" playsinline autoplay muted></video>
+  <video id="video2" playsinline autoplay muted ></video>
+  <br>
+  <button id="startRecording" type="button" name="button" onclick="startRecording()">Start Recording</button>
+  <button id="stopRecording" type="button" name="button" onclick="stopRecording()">Stop Recording</button>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/static/config.js"></script>
+</body>
+
+</html>
+<script>
+  // const socket = io.connect("http://localhost:7000");
+  window.onload = function() {
+    recordButton = document.getElementById('startRecording');
+    stopButton = document.getElementById('stopRecording');
+  }
+
+  const socket = io.connect();
+  const ExternalUserId = prompt("Enter user name:")
+  const peerConnections = {};
+  const config = turnConfig;
+  var selAudioDevice, selVideoDevice, recorder;
+  var ndiStream = new MediaStream()
+  // Get camera and microphone
+  const videoElement = document.querySelector("video#video1");
+  const videoElement2 = document.querySelector("video#video2");
+  const audioSelect = document.querySelector("select#audioSource");
+  const videoSelect = document.querySelector("select#videoSource");
+  var part = 1;
+
+  function startRecording() {
+    // enable/disable buttons
+    recordButton.disabled = true;
+    stopButton.disabled = false;
+    // getRecordStream();
+    var mime = 'video/webm';
+    recorder = new MediaRecorder(stream, {
+      mimeType: mime
+    });
+    // make the MediaRecorder to start recording
+    recorder.start(2500);
+
+    recorder.ondataavailable = handleRecorderData
+  }
+
+  function stopRecording() {
+    // enable/disable buttons
+    recordButton.disabled = false;
+    stopButton.disabled = true;
+
+    // make the MediaRecorder to stop recording
+    // eventually this will trigger the dataavailable event
+    recorder.stop();
+    socket.emit('stopRecording', ExternalUserId)
+  }
+
+  function handleRecorderData(event) {
+    console.log(ExternalUserId, part);
+    console.log(event.data.size);
+    if (event.data.size > 0) {
+      console.log("recorder data available");
+      console.log(event.data);
+      event.data.arrayBuffer()
+        .then((data) => {
+          if (!stopButton.disabled) {
+            console.log("Sending socket:::::", ExternalUserId, part);
+            socket.emit("recording", data, ExternalUserId, part)
+            part++;
+          }
+        })
+    }
+
+  }
+
+
+  if (typeof audioElement === 'string' && typeof videoElement === 'string') {
+    console.log("NDI audioElement string", audioElement);
+    console.log("NDI videoElement string", videoElement);
+
+    const constraints = {
+      audio: {
+        deviceId: audioElement,
+      },
+      video: {
+        deviceId: videoElement,
+        exact: true,
+        aspectRatio: 1.777777778,
+        width: {
+          min: 640,
+          ideal: 640,
+          max: 640
+        },
+        height: {
+          min: 360,
+          ideal: 360,
+          max: 360
+        }
+      }
+    }
+
+    navigator.mediaDevices.getUserMedia(constraints)
+      .then((stream) => {
+        stream.getTracks().forEach((track) => {
+          ndiStream.addTrack(track)
+        });
+
+        console.log("Stream String");
+        console.log(ndiStream);
+        console.log(ndiStream.getTracks());
+      }).catch(handleError)
+
+  } else if (typeof audioElement === 'object' && typeof videoElement === 'object') {
+    console.log("NDI audioElement object", audioElement);
+    console.log("NDI videoElement object", videoElement);
+    const constraints = {
+      audio: {
+        deviceId: audioElement.getAudioTracks()[0].getSettings().deviceId,
+        exact: true
+      },
+      video: {
+        deviceId: videoElement.getVideoTracks()[0].getSettings().deviceId,
+        exact: true,
+        width: {
+          min: 640,
+          ideal: 640,
+          max: 640
+        },
+        height: {
+          min: 360,
+          ideal: 360,
+          max: 360
+        }
+      }
+    }
+    navigator.mediaDevices.getUserMedia(constraints)
+      .then((stream) => {
+        console.log("Stream Object");
+        console.log(ndiStream);
+        console.log(ndiStream.getTracks());
+
+      }).catch(handleError)
+  }
+
+
+  socket.on("disconnectPeer", id => {
+    console.log("disconnectPeer received:::::::");
+  });
+
+  window.onunload = window.onbeforeunload = () => {
+    socket.close();
+  };
+
+
+  audioSelect.onchange = getStream;
+  videoSelect.onchange = getStream;
+
+  getStream()
+    .then(getDevices)
+    .then(gotDevices);
+
+  function getDevices() {
+    return navigator.mediaDevices.enumerateDevices();
+  }
+
+  function gotDevices(deviceInfos) {
+    window.deviceInfos = deviceInfos;
+    for (const deviceInfo of deviceInfos) {
+      const option = document.createElement("option");
+      option.value = deviceInfo.deviceId;
+      if (deviceInfo.kind === "audioinput") {
+        option.text = deviceInfo.label || `Microphone ${audioSelect.length + 1}`;
+        audioSelect.appendChild(option);
+      } else if (deviceInfo.kind === "videoinput") {
+        option.text = deviceInfo.label || `Camera ${videoSelect.length + 1}`;
+        videoSelect.appendChild(option);
+      }
+    }
+  }
+
+  function getStream() {
+    console.log("Getting Stream::::::::::");
+    if (window.stream) {
+      window.stream.getTracks().forEach(track => {
+        track.stop();
+      });
+    }
+    const audioSource = audioSelect.value;
+    selAudioDevice = audioSelect.value;
+    const videoSource = videoSelect.value;
+    selVideoDevice = videoSelect.value;
+
+    const constraints = {
+      audio: {
+        deviceId: audioSource ? {
+          exact: audioSource
+        } : undefined,
+
+      },
+      video: {
+        deviceId: videoSource ? {
+          exact: videoSource
+        } : undefined,
+        width: {
+          min: 640,
+          ideal: 640,
+          max: 640
+        },
+        height: {
+          min: 360,
+          ideal: 360,
+          max: 360
+        },
+        aspectRatio: 1.777777778,
+        // width: {
+        //   min: 960,
+        //   max: 1440
+        // },
+        // height: {
+        //   min: 720,
+        //   max: 1080
+        // },
+        // frameRate: {
+        //   min: 16,
+        //   max: 30
+        // }
+      }
+    };
+    return navigator.mediaDevices
+      .getUserMedia(constraints)
+      .then(gotStream)
+      .catch(handleError);
+  }
+
+  function getRecordStream() {
+    if (ndiStream) {
+      ndiStream.getTracks().forEach(track => {
+        track.stop();
+      });
+    }
+    const audioSource = audioSelect.value;
+    selAudioDevice = audioSelect.value;
+    const videoSource = videoSelect.value;
+    selVideoDevice = videoSelect.value;
+
+    const constraints = {
+      audio: {
+        deviceId: audioSource ? {
+          exact: audioSource
+        } : undefined,
+
+      },
+      video: {
+        deviceId: videoSource ? {
+          exact: videoSource
+        } : undefined,
+        width: 320,
+        height: 180
+      }
+    };
+    return navigator.mediaDevices
+      .getUserMedia(constraints)
+      .then((stream) => {
+        videoElement2.srcObject = stream
+        console.log("Recorder Track in getRecordStream ::::::");
+        stream.getTracks().forEach((track, i) => {
+          console.log(track.getSettings());
+        });
+
+      })
+      .catch(handleError);
+  }
+
+  function gotStream(stream) {
+
+
+    window.stream = stream;
+    audioSelect.selectedIndex = [...audioSelect.options].findIndex(
+      option => option.text === stream.getAudioTracks()[0].label
+    );
+    videoSelect.selectedIndex = [...videoSelect.options].findIndex(
+      option => option.text === stream.getVideoTracks()[0].label
+    );
+    videoElement.srcObject = stream;
+    var mime = 'video/webm';
+    recorder = new MediaRecorder(stream, { // 640x360p ===> 1280x720p
+      mimeType: mime
+    });
+
+    console.log("Recorder Track in GotStream ::::::");
+    stream.getTracks().forEach((track, i) => {
+      console.log(track.getSettings());
+    });
+    // make the MediaRecorder to start recording
+    recorder.start(2500);
+
+    recorder.ondataavailable = handleRecorderData
+    getRecordStream()
+    // videoElement.muted = false;
+    socket.emit("broadcaster");
+    console.log("Sending iam a broadcaster::::::: to Server");
+  }
+
+  function handleError(error) {
+    console.error("Error::::: ", error);
+  }
+</script>
