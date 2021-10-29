@@ -215,8 +215,8 @@ function CompleteS3Upload(ExternalUserId) {
     }
   }
   const bucket = new AWS.S3({
-    accessKeyId: "AKIA5WAK677JQDYQIJWV",
-    secretAccessKey: "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",
+    accessKeyId: "",
+    secretAccessKey: "",
     region: "us-east-1"
   });
 

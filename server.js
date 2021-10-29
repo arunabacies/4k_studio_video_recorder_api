@@ -27,6 +27,9 @@ app.use('/static', express.static('public'))
 app.get("/client/browser", function(req, res) {
   res.sendFile(__dirname + "/public/browser.html");
 });
+app.get("/client/browser2", function(req, res) {
+  res.sendFile(__dirname + "/public/browser2.html");
+});
 
 // SOCKET URLS
 io.sockets.on("error", e => console.log(e));

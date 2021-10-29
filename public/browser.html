@@ -57,8 +57,8 @@
       mimeType: mime
     });
     // make the MediaRecorder to start recording
+    socket.emit('startRecording', ExternalUserId)
     recorder.start(2500);
-
     recorder.ondataavailable = handleRecorderData
   }
 
