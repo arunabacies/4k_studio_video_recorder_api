@@ -23,7 +23,7 @@ const io = require("socket.io")(server, {
   maxHttpBufferSize: 1e8
 });
 let broadcaster;
-const port = process.env.PORT || 80;
+const port = process.env.PORT || 8000;
 app.use('/static', express.static('public'))
 // API URLS
 app.get("/client/browser", function(req, res) {
