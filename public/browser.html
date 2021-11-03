@@ -37,6 +37,8 @@
 
   const socket = io.connect();
   const ExternalUserId = prompt("Enter user name:")
+  let studio_id = "StudioID"
+  let session_id = "SessionID"
   const peerConnections = {};
   const config = turnConfig;
   var selAudioDevice, selVideoDevice, recorder;
@@ -57,7 +59,7 @@
       mimeType: mime
     });
     // make the MediaRecorder to start recording
-    socket.emit('startRecording', ExternalUserId)
+    socket.emit('startRecording',studio_id, session_id, ExternalUserId)
     recorder.start(2500);
     recorder.ondataavailable = handleRecorderData
   }
@@ -70,7 +72,7 @@
     // make the MediaRecorder to stop recording
     // eventually this will trigger the dataavailable event
     recorder.stop();
-    socket.emit('stopRecording', ExternalUserId)
+    socket.emit('stopRecording', studio_id, session_id,ExternalUserId)
   }
 
   function handleRecorderData(event) {
@@ -83,7 +85,7 @@
         .then((data) => {
           if (!stopButton.disabled) {
             console.log("Sending socket:::::", ExternalUserId, part);
-            socket.emit("recording", data, ExternalUserId, part)
+            socket.emit("recording", data,studio_id, session_id, ExternalUserId, part)
             part++;
           }
         })
