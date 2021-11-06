@@ -15,7 +15,7 @@ let completedStreamPartsInfo = {
 }
 let streamBuffer = {}
 const accessKeyId = ""
-const secretAccessKey = ""
+const secretAccessKey = " "
 const io = require("socket.io")(server, {
   cors: {
     origin: '*',
@@ -214,7 +214,7 @@ function CompleteS3Upload(studio_id, session_id, ExternalUserId) {
     Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
     UploadId: activeUploadDirectory[ExternalUserId],
     MultipartUpload: {
-      Parts: completedStreamPartsInfo[ExternalUserId]
+      Parts: getCompletedPartsInfo(completedStreamPartsInfo[ExternalUserId])
     }
   }
   const bucket = new AWS.S3({
@@ -235,5 +235,25 @@ function CompleteS3Upload(studio_id, session_id, ExternalUserId) {
     }
   });
   /* required */
+}
+
+function getCompletedPartsInfo(partsArray) {
+  const arr = new Set();
+  const reversed = partsArray.reverse();
+  //  Eliminate duplicates with same PartNumber from the array of objects
+  const filteredArr = reversed.filter(el => {
+    const duplicate = arr.has(el.PartNumber);
+    console.log(!duplicate);
+    arr.add(el.PartNumber);
+    return !duplicate;
+  });
+  console.log("reverse:::", reversed);
+  console.log("Set:::", arr);
+  console.log("Filtered Array:::", filteredArr);
+  const data = filteredArr.sort(function(a, b) {
+    return a.PartNumber - b.PartNumber;
+  })
+  //  Sort the data in ascending order
+  return data
 }
 server.listen(port, () => console.log(`Server is running on port ${port}`));
