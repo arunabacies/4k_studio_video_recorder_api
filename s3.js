@@ -39,7 +39,7 @@ app.post("/recordings/terminate", (req, res) => {
   var session_id = json_data.session_id
   var studio_id = json_data.studio_id
   console.log("API:::::::::::::", studio_id, session_id, uploadsToTerminate);
-  terminateActiveUploads(studio_id,session_id,uploadsToTerminate)
+  terminateActiveUploads(studio_id, session_id, uploadsToTerminate)
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({
     message: "Stop Recording Initialized",
@@ -99,7 +99,7 @@ function InitiateNewS3Recording(studio_id, session_id, ExternalUserId) {
         activeUploadDirectory[ExternalUserId] = {
           studio_id: studio_id,
           session_id: session_id,
-          UploadId:data.UploadId
+          UploadId: data.UploadId
         }
         completedStreamPartsInfo[ExternalUserId] = []
         completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = 0
@@ -118,58 +118,59 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
 
   return new Promise(async (resolve, reject) => {
     try {
-    if (streamBuffer[ExternalUserId]['size'] > 5242880) {
-      const part = completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] + 1
-      completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]++;
-      streamBuffer[ExternalUserId][part + 1 + ''] = [data]
-      streamBuffer[ExternalUserId]['size'] = 0
-      const bucket = new AWS.S3({
-        accessKeyId: accessKeyId,
-        secretAccessKey: secretAccessKey,
-        region: "us-east-1"
-      });
-      streamData = Buffer.concat(streamBuffer[ExternalUserId][part + '']);
-      const params = {
-        Bucket: 'w-call-meeting-files',
-        Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
-        PartNumber: part,
-        UploadId: activeUploadDirectory[ExternalUserId].UploadId,
-        Body: streamData
-      };
-      bucket.uploadPart(params, async (err, data) => {
-        if (data) {
-          console.log("part ", part, " uploaded:::::")
-          completedStreamPartsInfo[ExternalUserId].push({
-            ETag: data.ETag,
-            PartNumber: part
-          })
-          console.log(completedStreamPartsInfo);
-          // completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = part
-          streamBuffer[ExternalUserId][part + ''] = []
-        }
-        if (err) {
-          console.log("part ", part, " upload failed:::::")
-          console.log(err);
-        }
-      })
-    } else {
-      part = completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] + 1
-      streamBuffer[ExternalUserId]['size'] += data.byteLength
-      if (streamBuffer[ExternalUserId][part + '']) {
-        streamBuffer[ExternalUserId][part + ''].push(data)
+      if (streamBuffer[ExternalUserId]['size'] > 5242880) {
+        const part = completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] + 1
+        completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]++;
+        streamBuffer[ExternalUserId][part + 1 + ''] = [data]
+        streamBuffer[ExternalUserId]['size'] = 0
+        const bucket = new AWS.S3({
+          accessKeyId: accessKeyId,
+          secretAccessKey: secretAccessKey,
+          region: "us-east-1"
+        });
+        streamData = Buffer.concat(streamBuffer[ExternalUserId][part + '']);
+        const params = {
+          Bucket: 'w-call-meeting-files',
+          Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
+          PartNumber: part,
+          UploadId: activeUploadDirectory[ExternalUserId].UploadId,
+          Body: streamData
+        };
+        bucket.uploadPart(params, async (err, data) => {
+          if (data) {
+            console.log("part ", part, " uploaded:::::")
+            completedStreamPartsInfo[ExternalUserId].push({
+              ETag: data.ETag,
+              PartNumber: part
+            })
+            console.log(completedStreamPartsInfo);
+            // completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = part
+            streamBuffer[ExternalUserId][part + ''] = []
+          }
+          if (err) {
+            console.log("part ", part, " upload failed:::::")
+            console.log(err);
+          }
+        })
       } else {
-        streamBuffer[ExternalUserId][part + ''] = [data]
+        part = completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] + 1
+        streamBuffer[ExternalUserId]['size'] += data.byteLength
+        if (streamBuffer[ExternalUserId][part + '']) {
+          streamBuffer[ExternalUserId][part + ''].push(data)
+        } else {
+          streamBuffer[ExternalUserId][part + ''] = [data]
+        }
+        console.log("Part No ::: ", part);
+        console.log("Current Size of buffer :::: ", streamBuffer[ExternalUserId]['size']);
       }
-      console.log("Part No ::: ", part);
-      console.log("Current Size of buffer :::: ", streamBuffer[ExternalUserId]['size']);
+    } catch (e) {
+      if (e instanceof TypeError) {
+        // Output expected TypeErrors.
+        logging.log(e);
+      } else {
+        logging.log(e, false);
+      }
     }
-  } catch (e) {
-    if (e instanceof TypeError) {
-      // Output expected TypeErrors.
-      logging.log(e);
-    } else {
-      logging.log(e, false);
-    }}
   })
 
 }
@@ -286,15 +287,15 @@ function getCompletedPartsInfo(partsArray) {
   return data
 }
 
-async function terminateActiveUploads(studio_id,session_id,uploadsToTerminate) {
+async function terminateActiveUploads(studio_id, session_id, uploadsToTerminate) {
   console.log("Terminating active Uploads:::::::::");
-  await sleep(5000)
+  await sleep(60000)
   uploadsToTerminate.forEach((externalUserID, i) => {
     console.log("Terminating active Uploads:::::::::", externalUserID);
     console.log(Object.keys(activeUploadDirectory));
     if (activeUploadDirectory.hasOwnProperty(externalUserID)) {
       console.log("Stopping active Upload:::::::::", externalUserID);
-      CompleteS3Upload(studio_id, session_id,externalUserID)
+      CompleteS3Upload(studio_id, session_id, externalUserID)
     }
   });
 };
