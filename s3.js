@@ -26,12 +26,27 @@ let broadcaster;
 const port = process.env.PORT || 8000;
 app.use('/static', express.static('public'))
 // API URLS
+app.use(express.json())
 app.get("/client/browser", function(req, res) {
   res.sendFile(__dirname + "/public/browser.html");
 });
 app.get("/client/browser2", function(req, res) {
   res.sendFile(__dirname + "/public/browser2.html");
 });
+app.post("/recordings/terminate", (req, res) => {
+  var json_data = req.body
+  var uploadsToTerminate = json_data.ExternalUserIds
+  var session_id = json_data.session_id
+  var studio_id = json_data.studio_id
+  console.log("API:::::::::::::", studio_id, session_id, uploadsToTerminate);
+  terminateActiveUploads(studio_id,session_id,uploadsToTerminate)
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({
+    message: "Stop Recording Initialized",
+    data: uploadsToTerminate
+  }));
+})
+
 
 // SOCKET URLS
 io.sockets.on("error", e => console.log(e));
@@ -81,7 +96,11 @@ function InitiateNewS3Recording(studio_id, session_id, ExternalUserId) {
       if (err) console.log(err, err.stack); // an error occurred
       else {
         console.log(data); // successful response
-        activeUploadDirectory[ExternalUserId] = data.UploadId
+        activeUploadDirectory[ExternalUserId] = {
+          studio_id: studio_id,
+          session_id: session_id,
+          UploadId:data.UploadId
+        }
         completedStreamPartsInfo[ExternalUserId] = []
         completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = 0
         streamBuffer[ExternalUserId] = {
@@ -113,7 +132,7 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
         Bucket: 'w-call-meeting-files',
         Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
         PartNumber: part,
-        UploadId: activeUploadDirectory[ExternalUserId],
+        UploadId: activeUploadDirectory[ExternalUserId].UploadId,
         Body: streamData
       };
       bucket.uploadPart(params, async (err, data) => {
@@ -168,7 +187,7 @@ let final_check = async function checkDataInStreamBuffer(studio_id, session_id, 
           Bucket: 'w-call-meeting-files',
           Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
           PartNumber: part,
-          UploadId: activeUploadDirectory[ExternalUserId],
+          UploadId: activeUploadDirectory[ExternalUserId].UploadId,
           Body: streamData
         };
         bucket.uploadPart(params, async (err, data) => {
@@ -186,13 +205,13 @@ let final_check = async function checkDataInStreamBuffer(studio_id, session_id, 
             console.log(Object.keys(streamBuffer[ExternalUserId]).length - 1, part);
             if (Object.keys(streamBuffer[ExternalUserId]).length - 1 == part) {
               console.log("Initializing Complete Upload to S3::::::")
-              CompleteS3Upload(studio_id, session_id, ExternalUserId);
+              CompleteS3Upload(activeUploadDirectory[ExternalUserId].studio_id, activeUploadDirectory[ExternalUserId].session_id, ExternalUserId);
               return
             }
           }
           if (err) {
             console.log("part ", part, " upload failed:::::")
-            console.log(err);
+            console.log(err, err.stack);
           }
         })
       }
@@ -201,7 +220,7 @@ let final_check = async function checkDataInStreamBuffer(studio_id, session_id, 
     console.log("Final Check streamBuffer length ::::", Object.keys(streamBuffer[ExternalUserId]).length);
     if (Object.keys(streamBuffer[ExternalUserId]).length - 1 == completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]) {
       console.log("Initializing Complete Upload to S3");
-      CompleteS3Upload(studio_id, session_id, ExternalUserId);
+      CompleteS3Upload(activeUploadDirectory[ExternalUserId].studio_id, activeUploadDirectory[ExternalUserId].session_id, ExternalUserId);
       return
     }
   })
@@ -214,7 +233,7 @@ function CompleteS3Upload(studio_id, session_id, ExternalUserId) {
   var params = {
     Bucket: 'w-call-meeting-files',
     Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
-    UploadId: activeUploadDirectory[ExternalUserId],
+    UploadId: activeUploadDirectory[ExternalUserId].UploadId,
     MultipartUpload: {
       Parts: getCompletedPartsInfo(completedStreamPartsInfo[ExternalUserId])
     }
@@ -258,4 +277,24 @@ function getCompletedPartsInfo(partsArray) {
   //  Sort the data in ascending order
   return data
 }
+
+async function terminateActiveUploads(studio_id,session_id,uploadsToTerminate) {
+  console.log("Terminating active Uploads:::::::::");
+  await sleep(5000)
+  uploadsToTerminate.forEach((externalUserID, i) => {
+    console.log("Terminating active Uploads:::::::::", externalUserID);
+    console.log(Object.keys(activeUploadDirectory));
+    if (activeUploadDirectory.hasOwnProperty(externalUserID)) {
+      console.log("Stopping active Upload:::::::::", externalUserID);
+      CompleteS3Upload(studio_id, session_id,externalUserID)
+    }
+  });
+};
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 server.listen(port, () => console.log(`Server is running on port ${port}`));
