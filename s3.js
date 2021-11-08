@@ -176,65 +176,93 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
 }
 
 let final_check = async function checkDataInStreamBuffer(studio_id, session_id, ExternalUserId) {
-  console.log("Final Check Started :::::::::::::::");
-  console.log("No of Stream Buffers:::::::::::::::", Object.keys(streamBuffer[ExternalUserId]));
+  try {
+    console.log("Final Check Started :::::::::::::::");
+    console.log("No of Stream Buffers:::::::::::::::", Object.keys(streamBuffer[ExternalUserId]));
+  } catch (e) {
+    if (e instanceof TypeError) {
+      // Output expected TypeErrors.
+      console.log("final_check :::::::::::");
+      console.log(e);
+    } else {
+      console.log(e, false);
+    }
+  }
   return new Promise(async (resolve, reject) => {
     console.log("Checking for data in every buffer part :::::::::::::::");
+    try {
+      for (i = 1; i < Object.keys(streamBuffer[ExternalUserId]).length; i++) {
+        console.log("Checking stream buffer of part ", i, " ::::::::");
+        if ((streamBuffer[ExternalUserId][i + ''].length > 0) && (i > completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId])) {
+          console.log("buffer Data found for part ", i, " ::::::::");
+          let part = i
+          const bucket = new AWS.S3({
+            accessKeyId: accessKeyId,
+            secretAccessKey: secretAccessKey,
+            region: "us-east-1"
+          });
+          streamData = Buffer.concat(streamBuffer[ExternalUserId][part + '']);
+          const params = {
+            Bucket: 'w-call-meeting-files',
+            Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
+            PartNumber: part,
+            UploadId: activeUploadDirectory[ExternalUserId].UploadId,
+            Body: streamData
+          };
+          bucket.uploadPart(params, async (err, data) => {
+            if (data) {
+              console.log("part ", part, " uploaded in final check:::::")
+              completedStreamPartsInfo[ExternalUserId].push({
+                ETag: data.ETag,
+                PartNumber: part
+              })
+              console.log(data, completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]);
 
-    for (i = 1; i < Object.keys(streamBuffer[ExternalUserId]).length; i++) {
-      console.log("Checking stream buffer of part ", i, " ::::::::");
-      if ((streamBuffer[ExternalUserId][i + ''].length > 0) && (i > completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId])) {
-        console.log("buffer Data found for part ", i, " ::::::::");
-        let part = i
-        const bucket = new AWS.S3({
-          accessKeyId: accessKeyId,
-          secretAccessKey: secretAccessKey,
-          region: "us-east-1"
-        });
-        streamData = Buffer.concat(streamBuffer[ExternalUserId][part + '']);
-        const params = {
-          Bucket: 'w-call-meeting-files',
-          Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
-          PartNumber: part,
-          UploadId: activeUploadDirectory[ExternalUserId].UploadId,
-          Body: streamData
-        };
-        bucket.uploadPart(params, async (err, data) => {
-          if (data) {
-            console.log("part ", part, " uploaded in final check:::::")
-            completedStreamPartsInfo[ExternalUserId].push({
-              ETag: data.ETag,
-              PartNumber: part
-            })
-            console.log(data, completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]);
-
-            completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = part;
-            streamBuffer[ExternalUserId][part + ''] = [];
-            console.log("Checking if Last Buffer Reached:::: ")
-            console.log(Object.keys(streamBuffer[ExternalUserId]).length - 1, part);
-            if (Object.keys(streamBuffer[ExternalUserId]).length - 1 == part) {
-              console.log("Initializing Complete Upload to S3::::::")
-              CompleteS3Upload(activeUploadDirectory[ExternalUserId].studio_id, activeUploadDirectory[ExternalUserId].session_id, ExternalUserId);
-              return
+              completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = part;
+              streamBuffer[ExternalUserId][part + ''] = [];
+              console.log("Checking if Last Buffer Reached:::: ")
+              console.log(Object.keys(streamBuffer[ExternalUserId]).length - 1, part);
+              if (Object.keys(streamBuffer[ExternalUserId]).length - 1 == part) {
+                console.log("Initializing Complete Upload to S3::::::")
+                CompleteS3Upload(activeUploadDirectory[ExternalUserId].studio_id, activeUploadDirectory[ExternalUserId].session_id, ExternalUserId);
+                return
+              }
             }
-          }
-          if (err) {
-            console.log("part ", part, " upload failed:::::")
-            console.log(err, err.stack);
-          }
-        })
+            if (err) {
+              console.log("part ", part, " upload failed:::::")
+              console.log(err, err.stack);
+            }
+          })
+        }
+      }
+    } catch (e) {
+      if (e instanceof TypeError) {
+        // Output expected TypeErrors.
+        console.log(e);
+      } else {
+        console.log(e, false);
       }
     }
-    console.log("Final Check part ::::", completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]);
-    console.log("Final Check streamBuffer length ::::", Object.keys(streamBuffer[ExternalUserId]).length);
-    if (Object.keys(streamBuffer[ExternalUserId]).length - 1 == completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]) {
-      console.log("Initializing Complete Upload to S3");
-      CompleteS3Upload(activeUploadDirectory[ExternalUserId].studio_id, activeUploadDirectory[ExternalUserId].session_id, ExternalUserId);
-      return
+
+    try {
+      console.log("Final Check part ::::", completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]);
+      console.log("Final Check streamBuffer length ::::", Object.keys(streamBuffer[ExternalUserId]).length);
+      if (Object.keys(streamBuffer[ExternalUserId]).length - 1 == completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]) {
+        console.log("Initializing Complete Upload to S3");
+        CompleteS3Upload(activeUploadDirectory[ExternalUserId].studio_id, activeUploadDirectory[ExternalUserId].session_id, ExternalUserId);
+        return
+      }
+    } catch (e) {
+      if (e instanceof TypeError) {
+        // Output expected TypeErrors.
+        console.log(e);
+      } else {
+        console.log(e, false);
+      }
     }
   })
 
-}
+};
 
 function CompleteS3Upload(studio_id, session_id, ExternalUserId) {
   console.log("Completed Upload INfo:::::::", completedStreamPartsInfo[ExternalUserId]);
