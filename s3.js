@@ -166,9 +166,9 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
     } catch (e) {
       if (e instanceof TypeError) {
         // Output expected TypeErrors.
-        logging.log(e);
+        console.log(e);
       } else {
-        logging.log(e, false);
+        console.log(e, false);
       }
     }
   })
