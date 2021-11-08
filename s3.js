@@ -117,6 +117,7 @@ function InitiateNewS3Recording(studio_id, session_id, ExternalUserId) {
 const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUserId, data) {
 
   return new Promise(async (resolve, reject) => {
+    try {
     if (streamBuffer[ExternalUserId]['size'] > 5242880) {
       const part = completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] + 1
       completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]++;
@@ -162,6 +163,13 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
       console.log("Part No ::: ", part);
       console.log("Current Size of buffer :::: ", streamBuffer[ExternalUserId]['size']);
     }
+  } catch (e) {
+    if (e instanceof TypeError) {
+      // Output expected TypeErrors.
+      logging.log(e);
+    } else {
+      logging.log(e, false);
+    }}
   })
 
 }
