@@ -15,7 +15,7 @@ let completedStreamPartsInfo = {
 }
 let streamBuffer = {}
 const accessKeyId = ""
-const secretAccessKey = " "
+const secretAccessKey = ""
 const io = require("socket.io")(server, {
   cors: {
     origin: '*',
@@ -39,7 +39,7 @@ io.sockets.on("connection", socket => {
 
   // ########### Webrtc Sockets ##########
   socket.on('startRecording', (studio_id, session_id, ExternalUserId) => {
-    console.log("Strat Recording For:::::", ExternalUserId);
+    console.log("Start Recording For:::::", ExternalUserId);
     InitiateNewS3Recording(studio_id, session_id, ExternalUserId); // Arun 1 binary_data
   })
   socket.on('recording', (data, studio_id, session_id, ExternalUserId, part) => {
@@ -54,6 +54,7 @@ io.sockets.on("connection", socket => {
   });
 
   socket.on('stopRecording', (studio_id, session_id, channelName) => {
+    console.log("Stop Recording For:::::", ExternalUserId);
     final_check(studio_id, session_id, channelName);
   })
 
@@ -98,7 +99,8 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
 
   return new Promise(async (resolve, reject) => {
     if (streamBuffer[ExternalUserId]['size'] > 5242880) {
-      part = completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] + 1
+      const part = completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] + 1
+      completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]++;
       streamBuffer[ExternalUserId][part + 1 + ''] = [data]
       streamBuffer[ExternalUserId]['size'] = 0
       const bucket = new AWS.S3({
@@ -122,7 +124,7 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
             PartNumber: part
           })
           console.log(completedStreamPartsInfo);
-          completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = part
+          // completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = part
           streamBuffer[ExternalUserId][part + ''] = []
         }
         if (err) {
