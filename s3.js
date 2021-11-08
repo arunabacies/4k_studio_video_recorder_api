@@ -54,7 +54,7 @@ io.sockets.on("connection", socket => {
   });
 
   socket.on('stopRecording', (studio_id, session_id, channelName) => {
-    console.log("Stop Recording For:::::", ExternalUserId);
+    console.log("Stop Recording For:::::", channelName);
     final_check(studio_id, session_id, channelName);
   })
 
