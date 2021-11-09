@@ -8,7 +8,6 @@ const AWS = require("aws-sdk");
 const {
   Readable
 } = require('stream');
-
 let activeUploadDirectory = {}
 let completedStreamPartsInfo = {
   previouslyUploadedPart: {}
@@ -46,6 +45,20 @@ app.post("/recordings/terminate", (req, res) => {
     data: uploadsToTerminate
   }));
 })
+app.post("/recordings/backup/process", (req, res) => {
+  var json_data = req.body
+  var ExternalUserId = json_data.ExternalUserId
+  var session_id = json_data.session_id
+  var studio_id = json_data.studio_id
+  console.log("API:::::::::::::", studio_id, session_id, ExternalUserId);
+  processBackupToS3(studio_id, session_id, ExternalUserId)
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({
+    message: "Stop Recording Initialized",
+    data: json_data
+  }));
+})
+
 
 
 // SOCKET URLS
@@ -55,11 +68,16 @@ io.sockets.on("connection", socket => {
   // ########### Webrtc Sockets ##########
   socket.on('startRecording', (studio_id, session_id, ExternalUserId) => {
     console.log("Start Recording For:::::", ExternalUserId);
+    logger(session_id, `INFO::: SOCKET Received message to Start Recording For::::: ${ExternalUserId}`)
     InitiateNewS3Recording(studio_id, session_id, ExternalUserId); // Arun 1 binary_data
   })
+
   socket.on('recording', (data, studio_id, session_id, ExternalUserId, part) => {
     console.log(ExternalUserId, part, "received::::::::");
+    logger(session_id, `INFO::: SOCKET Received message Recording For::::: ${ExternalUserId} part ${part}`)
     upload(studio_id, session_id, ExternalUserId, data);
+    backup(studio_id, session_id, ExternalUserId, data, part);
+
   })
 
   socket.on("message", (message) => {
@@ -80,41 +98,65 @@ io.sockets.on("connection", socket => {
 
 function InitiateNewS3Recording(studio_id, session_id, ExternalUserId) {
   console.log("Existing active uploads :::::", activeUploadDirectory);
-  if (!activeUploadDirectory[ExternalUserId]) {
-    console.log("Creating a new upload stream :::::", ExternalUserId);
-    const bucket = new AWS.S3({
-      accessKeyId: accessKeyId,
-      secretAccessKey: secretAccessKey,
-      region: "us-east-1"
-    });
-    const params = {
-      Bucket: 'w-call-meeting-files',
-      Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
-    };
+  logger(session_id, `INFO::: FUNCTION InitiateNewS3Recording Started For::::: ${ExternalUserId}`)
+  logger(session_id, `INFO::: FUNCTION InitiateNewS3Recording Checking For::::: ${ExternalUserId} :::: active uploads in activeUploadDirectory`)
+  try {
+    if (!activeUploadDirectory[ExternalUserId]) {
+      logger(session_id, `INFO::: FUNCTION InitiateNewS3Recording Found For::::: ${ExternalUserId} :::: No active upload in activeUploadDirectory`)
+      console.log("Creating a new upload stream :::::", ExternalUserId);
+      const bucket = new AWS.S3({
+        accessKeyId: accessKeyId,
+        secretAccessKey: secretAccessKey,
+        region: "us-east-1"
+      });
+      const params = {
+        Bucket: 'w-call-meeting-files',
+        Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
+      };
 
-    bucket.createMultipartUpload(params, function(err, data) {
-      if (err) console.log(err, err.stack); // an error occurred
-      else {
-        console.log(data); // successful response
-        activeUploadDirectory[ExternalUserId] = {
-          studio_id: studio_id,
-          session_id: session_id,
-          UploadId: data.UploadId
+      logger(session_id, `INFO::: FUNCTION InitiateNewS3Recording createMultipartUpload For::::: ${ExternalUserId}`)
+      bucket.createMultipartUpload(params, function(err, data) {
+        if (err) {
+          console.log(err, err.stack); // an error occurred
+          logger(session_id, `ERROR::: FUNCTION InitiateNewS3Recording createMultipartUpload For::::: ${ExternalUserId}:::: Error:::: ${err}`)
+        } else {
+          logger(session_id, `INFO::: FUNCTION InitiateNewS3Recording createMultipartUpload For::::: ${ExternalUserId}:::: SUCCESS :::: ${data}`)
+          console.log(data); // successful response
+          activeUploadDirectory[ExternalUserId] = {
+            studio_id: studio_id,
+            session_id: session_id,
+            UploadId: data.UploadId
+          }
+          logger(session_id, `INFO::: FUNCTION InitiateNewS3Recording For::::: ${ExternalUserId}:::: added in activeUploadDirectory ::::`)
+          completedStreamPartsInfo[ExternalUserId] = []
+          completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = 0
+          logger(session_id, `INFO::: FUNCTION InitiateNewS3Recording For::::: ${ExternalUserId}:::: created  completedStreamPartsInfo ::::`)
+          streamBuffer[ExternalUserId] = {
+            size: 0
+          }
+          logger(session_id, `INFO::: FUNCTION InitiateNewS3Recording For::::: ${ExternalUserId}:::: created  streamBuffer ::::`)
+          console.log(activeUploadDirectory);
         }
-        completedStreamPartsInfo[ExternalUserId] = []
-        completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = 0
-        streamBuffer[ExternalUserId] = {
-          size: 0
-        }
+      });
+    } else {
+      logger(session_id, `INFO::: FUNCTION InitiateNewS3Recording Found For::::: ${ExternalUserId} :::: active upload in activeUploadDirectory`)
+      return
+    }
 
-        console.log(activeUploadDirectory);
-      }
-    });
-  } else {
-    return
+  } catch (e) {
+    if (e instanceof TypeError) {
+      // Output expected TypeErrors.
+      logger(session_id, `ERROR::: FUNCTION InitiateNewS3Recording TypeError For::::: ${ExternalUserId}:::: Error:::: ${e}`)
+      console.log(e);
+    } else {
+      logger(session_id, `ERROR::: FUNCTION InitiateNewS3Recording Error For::::: ${ExternalUserId}:::: Error:::: ${e}`)
+      console.log(e, false);
+    }
   }
 }
+
 const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUserId, data) {
+  logger(session_id, `INFO::: FUNCTION uploadFilesToS3 Started For::::: ${ExternalUserId}`)
 
   return new Promise(async (resolve, reject) => {
     try {
@@ -166,13 +208,48 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
     } catch (e) {
       if (e instanceof TypeError) {
         // Output expected TypeErrors.
+        logger(session_id, `ERROR::: FUNCTION uploadFilesToS3 TypeError For::::: ${ExternalUserId}:::: Error:::: ${e}`)
         console.log(e);
       } else {
+        logger(session_id, `ERROR::: FUNCTION uploadFilesToS3 Error For::::: ${ExternalUserId}:::: Error:::: ${e}`)
         console.log(e, false);
       }
     }
   })
 
+}
+
+const backup = async function backupFilesForS3(studio_id, session_id, ExternalUserId, data, part) {
+  return new Promise(async (resolve, reject) => {
+    const json_data = {
+      studio_id: studio_id,
+      session_id: session_id,
+      part: part,
+      ExternalUserId: ExternalUserId,
+      data: data.toString('binary')
+    }
+    let json = JSON.stringify(json_data);
+    let filePath = path.format({
+      root: '/ignored',
+      dir: `${__dirname}/${studio_id}/${session_id}/${ExternalUserId}`,
+      base: `${part}.json`
+    })
+    ensureDirectoryExistence(filePath)
+    console.log(filePath);
+    fs.writeFile(filePath, json, (err) => {
+      console.log(filePath, "error:::::::::::::::::");
+      console.log(err);
+    });
+  });
+}
+
+function ensureDirectoryExistence(filePath) {
+  var dirname = path.dirname(filePath);
+  if (fs.existsSync(dirname)) {
+    return true;
+  }
+  ensureDirectoryExistence(dirname);
+  fs.mkdirSync(dirname);
 }
 
 let final_check = async function checkDataInStreamBuffer(studio_id, session_id, ExternalUserId) {
@@ -328,10 +405,53 @@ async function terminateActiveUploads(studio_id, session_id, uploadsToTerminate)
   });
 };
 
+async function processBackupToS3(studio_id, session_id, ExternalUserId) {
+  try {
+    // const data = []
+    const jsonFiles = await fs.promises.readdir(`${studio_id}/${session_id}/${ExternalUserId}`)
+      .then((files) => {
+        let filteredFiles = files.filter(file => path.extname(file) === '.json');
+        console.log(filteredFiles);
+        let sorted = filteredFiles.sort((a, b) => {
+          let s1 = parseInt(path.basename(a));
+          let s2 = parseInt(path.basename(b));
+          return s1 - s2;
+        });
+        sorted.forEach(file => {
+          const fileData = fs.readFileSync(path.join(`${studio_id}/${session_id}/${ExternalUserId}`, file));
+          const json = JSON.parse(fileData.toString());
+          // data.push(Buffer.from(json.data, 'binary'))
+          let bufferData = Buffer.from(json.data, 'binary')
+          fs.appendFileSync(`${studio_id}/${session_id}/${ExternalUserId}/${ExternalUserId}.webm`, bufferData, 'binary');
+          console.log(json.ExternalUserId, json.part);
+          console.log(bufferData);
+          console.log('part', file, ' appended to file! ', `${ExternalUserId}.webm`);
+        });
+
+        // if (data.length > 0) fs.createWriteStream(`${studio_id}/${session_id}/${ExternalUserId}/${ExternalUserId}.webm`).write(data[0], 'binary')
+        // data.forEach((buffer, i) => {
+        //   if (i < 1) {
+        //     fs.appendFileSync(`${studio_id}/${session_id}/${ExternalUserId}/${ExternalUserId}.webm`, buffer,'binary');
+        //     console.log(buffer);
+        //     console.log('part', i, ' appended to file! ', `${ExternalUserId}.webm`);
+        //   }
+        // });
+
+      })
+
+  } catch (err) {
+    console.error(err);
+  }
+};
+
 function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+async function logger(id, message) {
+  fs.appendFileSync(`${id}.log`, message+"\r\n", 'utf-8');
 }
 
 server.listen(port, () => console.log(`Server is running on port ${port}`));
