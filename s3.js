@@ -86,9 +86,10 @@ io.sockets.on("connection", socket => {
     console.log("::::::::::::::");
   });
 
-  socket.on('stopRecording', (studio_id, session_id, channelName) => {
-    console.log("Stop Recording For:::::", channelName);
-    final_check(studio_id, session_id, channelName);
+  socket.on('stopRecording', (studio_id, session_id, ExternalUserId) => {
+    logger(session_id, `INFO::: SOCKET Received message Stop Recording For::::: ${ExternalUserId} `)
+    console.log("Stop Recording For:::::", ExternalUserId);
+    final_check(studio_id, session_id, ExternalUserId);
   })
 
   socket.on("disconnect", () => {
@@ -157,10 +158,13 @@ function InitiateNewS3Recording(studio_id, session_id, ExternalUserId) {
 
 const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUserId, data) {
   logger(session_id, `INFO::: FUNCTION uploadFilesToS3 Started For::::: ${ExternalUserId}`)
+  logger(session_id, `INFO::: FUNCTION uploadFilesToS3 For::::: ${ExternalUserId} data RECEIVED in uploadFilesToS3:::`)
 
   return new Promise(async (resolve, reject) => {
     try {
+      logger(session_id, `INFO::: FUNCTION uploadFilesToS3 Check For::::: ${ExternalUserId} ::: trying streamBuffer > 5242880`)
       if (streamBuffer[ExternalUserId]['size'] > 5242880) {
+        logger(session_id, `INFO::: FUNCTION uploadFilesToS3 For::::: ${ExternalUserId} ::: streamBuffer > 5242880 SUCCESS :::`)
         const part = completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] + 1
         completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]++;
         streamBuffer[ExternalUserId][part + 1 + ''] = [data]
@@ -178,9 +182,11 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
           UploadId: activeUploadDirectory[ExternalUserId].UploadId,
           Body: streamData
         };
+        logger(session_id, `INFO::: FUNCTION uploadFilesToS3 For::::: ${ExternalUserId} ::: trying uploadPart ${part} :::`)
         bucket.uploadPart(params, async (err, data) => {
           if (data) {
             console.log("part ", part, " uploaded:::::")
+            logger(session_id, `INFO::: FUNCTION uploadFilesToS3 For::::: ${ExternalUserId} ::: uploadPart ${part} SUCCESS :::`)
             completedStreamPartsInfo[ExternalUserId].push({
               ETag: data.ETag,
               PartNumber: part
@@ -190,17 +196,22 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
             streamBuffer[ExternalUserId][part + ''] = []
           }
           if (err) {
+            logger(session_id, `INFO::: FUNCTION uploadFilesToS3 For::::: ${ExternalUserId} ::: uploadPart ${part} FAIL :::`)
+            logger(session_id, `ERROR::: FUNCTION uploadFilesToS3 For::::: ${ExternalUserId} :::  ${err}`)
             console.log("part ", part, " upload failed:::::")
             console.log(err);
           }
         })
       } else {
+        logger(session_id, `INFO::: FUNCTION uploadFilesToS3 Check For::::: ${ExternalUserId} ::: streamBuffer > 5242880 FAIL::::`)
         part = completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] + 1
         streamBuffer[ExternalUserId]['size'] += data.byteLength
         if (streamBuffer[ExternalUserId][part + '']) {
           streamBuffer[ExternalUserId][part + ''].push(data)
+          logger(session_id, `INFO::: FUNCTION uploadFilesToS3 For::::: ${ExternalUserId} ::: part ${part} streamBuffer data ADDED ::::`)
         } else {
           streamBuffer[ExternalUserId][part + ''] = [data]
+          logger(session_id, `INFO::: FUNCTION uploadFilesToS3 For::::: ${ExternalUserId} ::: part ${part} streamBuffer data INITIALIZED ::::`)
         }
         console.log("Part No ::: ", part);
         console.log("Current Size of buffer :::: ", streamBuffer[ExternalUserId]['size']);
@@ -220,29 +231,44 @@ const upload = async function uploadFilesToS3(studio_id, session_id, ExternalUse
 }
 
 const backup = async function backupFilesForS3(studio_id, session_id, ExternalUserId, data, part) {
+  logger(session_id, `INFO::: FUNCTION backupFilesForS3 Started For::::: ${ExternalUserId}::: part ${part} :::`)
+
   return new Promise(async (resolve, reject) => {
-    const json_data = {
-      studio_id: studio_id,
-      session_id: session_id,
-      part: part,
-      ExternalUserId: ExternalUserId,
-      data: data.toString('binary')
+    try {
+      const json_data = {
+        studio_id: studio_id,
+        session_id: session_id,
+        part: part,
+        ExternalUserId: ExternalUserId,
+        data: data.toString('binary')
+      }
+      let json = JSON.stringify(json_data);
+      logger(session_id, `INFO::: FUNCTION backupFilesForS3 For::::: ${ExternalUserId}::: part ${part} data PREPARED :::`)
+      let filePath = path.format({
+        root: '/ignored',
+        dir: `${__dirname}/${studio_id}/${session_id}/${ExternalUserId}`,
+        base: `${part}.json`
+      })
+      ensureDirectoryExistence(filePath)
+      console.log(filePath);
+      fs.writeFile(filePath, json, (err) => {
+        console.log(filePath);
+        if (err){
+          logger(session_id, `ERROR::: FUNCTION backupFilesForS3 For::::: ${ExternalUserId}::: part ${part} writeFile :::`)
+          console.log(err);
+        }
+      });
+    } catch (e) {
+      if (e instanceof TypeError) {
+        logger(session_id, `ERROR::: FUNCTION backupFilesForS3 For::::: ${ExternalUserId}::: part ${part} TypeError ${e} :::`)
+        console.log(e);
+      } else {
+        logger(session_id, `ERROR::: FUNCTION backupFilesForS3 For::::: ${ExternalUserId}::: part ${part} Error ${e} :::`)
+        console.log(e, false);
+      }
     }
-    let json = JSON.stringify(json_data);
-    let filePath = path.format({
-      root: '/ignored',
-      dir: `${__dirname}/${studio_id}/${session_id}/${ExternalUserId}`,
-      base: `${part}.json`
-    })
-    ensureDirectoryExistence(filePath)
-    console.log(filePath);
-    fs.writeFile(filePath, json, (err) => {
-      console.log(filePath, "error:::::::::::::::::");
-      console.log(err);
-    });
   });
 }
-
 function ensureDirectoryExistence(filePath) {
   var dirname = path.dirname(filePath);
   if (fs.existsSync(dirname)) {
@@ -253,25 +279,34 @@ function ensureDirectoryExistence(filePath) {
 }
 
 let final_check = async function checkDataInStreamBuffer(studio_id, session_id, ExternalUserId) {
+  logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer Started For::::: ${ExternalUserId}:::`)
+
   try {
     console.log("Final Check Started :::::::::::::::");
     console.log("No of Stream Buffers:::::::::::::::", Object.keys(streamBuffer[ExternalUserId]));
+    logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}::: Parts Uploaded to S3 ::: ${Object.keys(streamBuffer[ExternalUserId])} PRESENT :::::`)
   } catch (e) {
     if (e instanceof TypeError) {
       // Output expected TypeErrors.
       console.log("final_check :::::::::::");
+      logger(session_id, `ERROR::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}::: TypeError ${e}  :::::`)
       console.log(e);
     } else {
+      logger(session_id, `ERROR::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}::: Error ${e}  :::::`)
       console.log(e, false);
     }
   }
   return new Promise(async (resolve, reject) => {
     console.log("Checking for data in every buffer part :::::::::::::::");
+    logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer Checking For::::: ${ExternalUserId}::: trying streamBuffer data available :::`)
     try {
+
       for (i = 1; i < Object.keys(streamBuffer[ExternalUserId]).length; i++) {
         console.log("Checking stream buffer of part ", i, " ::::::::");
         if ((streamBuffer[ExternalUserId][i + ''].length > 0) && (i > completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId])) {
           console.log("buffer Data found for part ", i, " ::::::::");
+          logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer Checking For::::: ${ExternalUserId}::: trying streamBuffer data found for S3 part ${i} :::`)
+
           let part = i
           const bucket = new AWS.S3({
             accessKeyId: accessKeyId,
@@ -286,9 +321,12 @@ let final_check = async function checkDataInStreamBuffer(studio_id, session_id, 
             UploadId: activeUploadDirectory[ExternalUserId].UploadId,
             Body: streamData
           };
+          logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId} ::: trying uploadPart ${part} :::`)
           bucket.uploadPart(params, async (err, data) => {
             if (data) {
               console.log("part ", part, " uploaded in final check:::::")
+              logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId} ::: uploadPart ${part} SUCCESS :::`)
+
               completedStreamPartsInfo[ExternalUserId].push({
                 ETag: data.ETag,
                 PartNumber: part
@@ -298,14 +336,19 @@ let final_check = async function checkDataInStreamBuffer(studio_id, session_id, 
               completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId] = part;
               streamBuffer[ExternalUserId][part + ''] = [];
               console.log("Checking if Last Buffer Reached:::: ")
+              logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer Checking For::::: ${ExternalUserId} :::  Last Buffer Reached :::`)
               console.log(Object.keys(streamBuffer[ExternalUserId]).length - 1, part);
               if (Object.keys(streamBuffer[ExternalUserId]).length - 1 == part) {
+                logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer Checking For::::: ${ExternalUserId} :::  Last Buffer Reached SUCCESS :::`)
+                logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId} :::  Ready to Complete Upload to S3 :::`)
                 console.log("Initializing Complete Upload to S3::::::")
                 CompleteS3Upload(activeUploadDirectory[ExternalUserId].studio_id, activeUploadDirectory[ExternalUserId].session_id, ExternalUserId);
                 return
               }
             }
             if (err) {
+              logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId} ::: uploadPart ${part} FAIL :::`)
+              logger(session_id, `ERROR::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId} :::  ${err}`)
               console.log("part ", part, " upload failed:::::")
               console.log(err, err.stack);
             }
@@ -316,15 +359,22 @@ let final_check = async function checkDataInStreamBuffer(studio_id, session_id, 
       if (e instanceof TypeError) {
         // Output expected TypeErrors.
         console.log(e);
+        logger(session_id, `ERROR::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}:::trying streamBuffer data available ::: TypeError ${e}  :::::`)
+
       } else {
         console.log(e, false);
+        logger(session_id, `ERROR::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}::: trying streamBuffer data available :::Error ${e}  :::::`)
+
       }
     }
+    logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}:::  streamBuffer data available COMPLETED & CompleteS3Upload NOT INITIALIZED till now :::`)
 
     try {
       console.log("Final Check part ::::", completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]);
       console.log("Final Check streamBuffer length ::::", Object.keys(streamBuffer[ExternalUserId]).length);
+      logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}:::  trying streamBuffer end reached :::`)
       if (Object.keys(streamBuffer[ExternalUserId]).length - 1 == completedStreamPartsInfo.previouslyUploadedPart[ExternalUserId]) {
+        logger(session_id, `INFO::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}:::  trying streamBuffer end reached SUCCESS:::`)
         console.log("Initializing Complete Upload to S3");
         CompleteS3Upload(activeUploadDirectory[ExternalUserId].studio_id, activeUploadDirectory[ExternalUserId].session_id, ExternalUserId);
         return
@@ -333,7 +383,9 @@ let final_check = async function checkDataInStreamBuffer(studio_id, session_id, 
       if (e instanceof TypeError) {
         // Output expected TypeErrors.
         console.log(e);
+        logger(session_id, `ERROR::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}::: trying streamBuffer end reached::: TypeError ${e}  :::::`)
       } else {
+        logger(session_id, `ERROR::: FUNCTION checkDataInStreamBuffer For::::: ${ExternalUserId}::: trying streamBuffer end reached::: Error ${e}  :::::`)
         console.log(e, false);
       }
     }
@@ -342,33 +394,57 @@ let final_check = async function checkDataInStreamBuffer(studio_id, session_id, 
 };
 
 function CompleteS3Upload(studio_id, session_id, ExternalUserId) {
-  console.log("Completed Upload INfo:::::::", completedStreamPartsInfo[ExternalUserId]);
-  console.log(completedStreamPartsInfo);
-  var params = {
-    Bucket: 'w-call-meeting-files',
-    Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
-    UploadId: activeUploadDirectory[ExternalUserId].UploadId,
-    MultipartUpload: {
-      Parts: getCompletedPartsInfo(completedStreamPartsInfo[ExternalUserId])
+  logger(session_id, `INFO::: FUNCTION CompleteS3Upload Started For::::: ${ExternalUserId} :::  Upload to S3 INITIALIZED :::`)
+  logger(session_id, `INFO::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId} :::  completedStreamPartsInfo ${completedStreamPartsInfo[ExternalUserId]} :::`)
+  try {
+    console.log("Completed Upload INfo:::::::", completedStreamPartsInfo[ExternalUserId]);
+    console.log(completedStreamPartsInfo);
+    var params = {
+      Bucket: 'w-call-meeting-files',
+      Key: "studio/" + studio_id + "/" + session_id + "/" + ExternalUserId + '.webm',
+      UploadId: activeUploadDirectory[ExternalUserId].UploadId,
+      MultipartUpload: {
+        Parts: getCompletedPartsInfo(completedStreamPartsInfo[ExternalUserId])
+      }
+    }
+    const bucket = new AWS.S3({
+      accessKeyId: accessKeyId,
+      secretAccessKey: secretAccessKey,
+      region: "us-east-1"
+    });
+
+    bucket.completeMultipartUpload(params, function(err, data) {
+      logger(session_id, `INFO::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId} :::  completeMultipartUpload STARTED :::`)
+      if (err) {
+        console.log(err, err.stack); // an error occurred
+        logger(session_id, `INFO::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId} :::  completeMultipartUpload FAILED :::`)
+        logger(session_id, `ERROR::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId} :::  Error ${err} :::`)
+
+      } else {
+        console.log(data); // successful response
+        console.log(ExternalUserId, " upload completed::::");
+        logger(session_id, `INFO::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId} :::  completeMultipartUpload SUCCESS :::`)
+        delete activeUploadDirectory[ExternalUserId]
+        logger(session_id, `INFO::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId} :::  activeUploadDirectory DELETED :::`)
+        delete streamBuffer[ExternalUserId]
+        logger(session_id, `INFO::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId} :::  streamBuffer DELETED :::`)
+        delete completedStreamPartsInfo[ExternalUserId]
+        logger(session_id, `INFO::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId} :::  completedStreamPartsInfo DELETED :::`)
+        delete completedStreamPartsInfo['previouslyUploadedPart'][ExternalUserId]
+        logger(session_id, `INFO::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId} :::  completedStreamPartsInfo-previouslyUploadedPart DELETED :::`)
+      }
+    });
+} catch (e) {
+    if (e instanceof TypeError) {
+      // Output expected TypeErrors.
+      console.log(e);
+      logger(session_id, `ERROR::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId}::: TypeError ${e}  :::::`)
+
+    } else {
+      logger(session_id, `ERROR::: FUNCTION CompleteS3Upload For::::: ${ExternalUserId}::: Error ${e}  :::::`)
+      console.log(e, false);
     }
   }
-  const bucket = new AWS.S3({
-    accessKeyId: accessKeyId,
-    secretAccessKey: secretAccessKey,
-    region: "us-east-1"
-  });
-
-  bucket.completeMultipartUpload(params, function(err, data) {
-    if (err) console.log(err, err.stack); // an error occurred
-    else {
-      console.log(data); // successful response
-      console.log(ExternalUserId, " upload completed::::");
-      delete activeUploadDirectory[ExternalUserId]
-      delete streamBuffer[ExternalUserId]
-      delete completedStreamPartsInfo[ExternalUserId]
-      delete completedStreamPartsInfo['previouslyUploadedPart'][ExternalUserId]
-    }
-  });
   /* required */
 }
 
@@ -393,23 +469,34 @@ function getCompletedPartsInfo(partsArray) {
 }
 
 async function terminateActiveUploads(studio_id, session_id, uploadsToTerminate) {
+  logger(session_id, `INFO::: FUNCTION terminateActiveUploads Started ::: uploadIDs ${uploadsToTerminate}`)
+
   console.log("Terminating active Uploads:::::::::");
   await sleep(60000)
   uploadsToTerminate.forEach((externalUserID, i) => {
     console.log("Terminating active Uploads:::::::::", externalUserID);
     console.log(Object.keys(activeUploadDirectory));
+    logger(session_id, `INFO::: FUNCTION terminateActiveUploads for ${externalUserID} ::: trying  activeUploadDirectory ::::`)
     if (activeUploadDirectory.hasOwnProperty(externalUserID)) {
+      logger(session_id, `INFO::: FUNCTION terminateActiveUploads for ${externalUserID} ::: trying  activeUploadDirectory SUCCESS::::`)
       console.log("Stopping active Upload:::::::::", externalUserID);
       CompleteS3Upload(studio_id, session_id, externalUserID)
+    } else{
+      console.log("No active Upload for :::::::::", externalUserID);
+      logger(session_id, `INFO::: FUNCTION terminateActiveUploads for ${externalUserID} ::: trying  activeUploadDirectory FAILED::::`)
     }
   });
 };
 
 async function processBackupToS3(studio_id, session_id, ExternalUserId) {
+  logger(session_id, `INFO::: FUNCTION processBackupToS3 Started for ${ExternalUserId}:::`)
   try {
     // const data = []
+    logger(session_id, `INFO::: FUNCTION processBackupToS3 for ${ExternalUserId}::: tring to read backed up data :::`)
+
     const jsonFiles = await fs.promises.readdir(`${studio_id}/${session_id}/${ExternalUserId}`)
       .then((files) => {
+
         let filteredFiles = files.filter(file => path.extname(file) === '.json');
         console.log(filteredFiles);
         let sorted = filteredFiles.sort((a, b) => {
@@ -417,6 +504,7 @@ async function processBackupToS3(studio_id, session_id, ExternalUserId) {
           let s2 = parseInt(path.basename(b));
           return s1 - s2;
         });
+        logger(session_id, `INFO::: FUNCTION processBackupToS3 for ${ExternalUserId}::: backed up data ${sorted} :::`)
         sorted.forEach(file => {
           const fileData = fs.readFileSync(path.join(`${studio_id}/${session_id}/${ExternalUserId}`, file));
           const json = JSON.parse(fileData.toString());
@@ -426,20 +514,13 @@ async function processBackupToS3(studio_id, session_id, ExternalUserId) {
           console.log(json.ExternalUserId, json.part);
           console.log(bufferData);
           console.log('part', file, ' appended to file! ', `${ExternalUserId}.webm`);
+          logger(session_id, `INFO::: FUNCTION processBackupToS3 for ${ExternalUserId}::: part ${json.part} completed :::`)
+
         });
-
-        // if (data.length > 0) fs.createWriteStream(`${studio_id}/${session_id}/${ExternalUserId}/${ExternalUserId}.webm`).write(data[0], 'binary')
-        // data.forEach((buffer, i) => {
-        //   if (i < 1) {
-        //     fs.appendFileSync(`${studio_id}/${session_id}/${ExternalUserId}/${ExternalUserId}.webm`, buffer,'binary');
-        //     console.log(buffer);
-        //     console.log('part', i, ' appended to file! ', `${ExternalUserId}.webm`);
-        //   }
-        // });
-
       })
 
   } catch (err) {
+    logger(session_id, `ERROR::: FUNCTION processBackupToS3 for ${ExternalUserId}::: Error ${err}  :::`)
     console.error(err);
   }
 };
@@ -451,7 +532,7 @@ function sleep(ms) {
 }
 
 async function logger(id, message) {
-  fs.appendFileSync(`${id}.log`, message+"\r\n", 'utf-8');
+  fs.appendFileSync(`${id}.log`, message + "\r\n", 'utf-8');
 }
 
 server.listen(port, () => console.log(`Server is running on port ${port}`));
