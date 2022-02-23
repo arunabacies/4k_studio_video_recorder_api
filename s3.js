@@ -515,7 +515,6 @@ async function processBackupToS3(studio_id, session_id, ExternalUserId) {
           console.log(bufferData);
           console.log('part', file, ' appended to file! ', `${ExternalUserId}.webm`);
           logger(session_id, `INFO::: FUNCTION processBackupToS3 for ${ExternalUserId}::: part ${json.part} completed :::`)
-
         });
       })
 
@@ -532,7 +531,7 @@ function sleep(ms) {
 }
 
 async function logger(id, message) {
-  fs.appendFileSync(`${id}.log`, message + "\r\n", 'utf-8');
+  fs.appendFileSync(`logs/${id}.log`, message + "\r\n", 'utf-8');
 }
 
 server.listen(port, () => console.log(`Server is running on port ${port}`));
