@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  <title>Broadcaster</title>
+  <title>4k Studio</title>
   <meta charset="UTF-8" />
 </head>
 
@@ -18,79 +18,84 @@
     <select id="videoSource"></select>
   </section>
 
-  <video playsinline autoplay muted></video>
+  <video id="video1" playsinline autoplay muted></video>
   <br>
   <button id="startRecording" type="button" name="button" onclick="startRecording()">Start Recording</button>
   <button id="stopRecording" type="button" name="button" onclick="stopRecording()">Stop Recording</button>
-
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/static/config.js"></script>
 </body>
+<script src="https://sdk.amazonaws.com/js/aws-sdk-2.990.0.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 
 </html>
 <script>
-  // const socket = io.connect("http://localhost:7000");
+  const socket = io.connect();
   window.onload = function() {
     recordButton = document.getElementById('startRecording');
     stopButton = document.getElementById('stopRecording');
   }
 
-  const socket = io.connect();
-  const ExternalUserId = prompt("Enter user name:")
-  let studio_id = "StudioID"
-  let session_id = "SessionID"
-  const peerConnections = {};
-  const config = turnConfig;
-  var selAudioDevice, selVideoDevice, recorder;
-  var ndiStream = new MediaStream()
   // Get camera and microphone
-  const videoElement = document.querySelector("video");
+  const videoElement = document.querySelector("video#video1");
   const audioSelect = document.querySelector("select#audioSource");
   const videoSelect = document.querySelector("select#videoSource");
-  var part = 1;
+  var s3UploadFlag = false;
+  var videoRecorder;
 
   function startRecording() {
     // enable/disable buttons
     recordButton.disabled = true;
     stopButton.disabled = false;
     // getRecordStream();
-    var mime = 'video/webm';
-    recorder = new MediaRecorder(stream, {
-      mimeType: mime
-    });
-    // make the MediaRecorder to start recording
-    socket.emit('startRecording',studio_id, session_id, ExternalUserId)
-    recorder.start(2500);
-    recorder.ondataavailable = handleRecorderData
+    getStream()
+    s3UploadFlag = true;
   }
 
   function stopRecording() {
     // enable/disable buttons
     recordButton.disabled = false;
     stopButton.disabled = true;
+    s3UploadFlag = false;
+  }
 
-    // make the MediaRecorder to stop recording
-    // eventually this will trigger the dataavailable event
-    recorder.stop();
-    socket.emit('stopRecording', studio_id, session_id,ExternalUserId)
+  function recordVideo(stream) {
+    videoRecorder = new MediaRecorder(stream, {
+      mimeType: "video/webm; codecs=vp9"
+    });
+    videoRecorder.ondataavailable = handleRecorderData
+    videoRecorder.start();
+    setTimeout(function() {
+      if (videoRecorder.state == "recording")
+        videoRecorder.stop();
+
+      if (s3UploadFlag)
+        recordVideo(stream);
+    }, 5000); // 10 seconds videos
   }
 
   function handleRecorderData(event) {
-    console.log(ExternalUserId, part);
     console.log(event.data.size);
     if (event.data.size > 0) {
       console.log("recorder data available");
       console.log(event.data);
-      event.data.arrayBuffer()
-        .then((data) => {
-          if (!stopButton.disabled) {
-            console.log("Sending socket:::::", ExternalUserId, part);
-            socket.emit("recording", data,studio_id, session_id, ExternalUserId, part)
-            part++;
-          }
-        })
+      var uploadPath = "captures/19781e5a-e898-4d73-b27c-b1e860ce0706/video"
+      const videoChunks = []
+      videoChunks.push(event.data)
+      var currentDate = new Date();
+      let studio_id = 'StudioId',
+        session_id = 'SessionID',
+        ExternalUserId = 'AJ',
+        part = 0
+      var fileName = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1)}-${currentDate.getDay()}-${currentDate.getHours()}-${currentDate.getMinutes()}-${currentDate.getSeconds()}-${currentDate.getMilliseconds()}-${ExternalUserId}`
+      let chunk = {
+        videoChunks: videoChunks,
+        studio_id: studio_id,
+        session_id: session_id,
+        ExternalUserId: ExternalUserId,
+        part: part,
+        fileName: fileName
+      }
+      socket.emit("recording", chunk);
     }
-
   }
 
 
@@ -107,27 +112,25 @@
         exact: true,
         aspectRatio: 1.777777778,
         width: {
-          min: 1280,
-          ideal: 3840,
-          max: 3840
+          min: 640,
+          ideal: 640,
+          max: 640
         },
         height: {
-          min: 720,
-          ideal: 2160,
-          max: 2160
+          min: 360,
+          ideal: 360,
+          max: 360
         }
       }
     }
 
     navigator.mediaDevices.getUserMedia(constraints)
       .then((stream) => {
-        stream.getTracks().forEach((track) => {
-          ndiStream.addTrack(track)
+        videoRecorder = new MediaRecorder(stream, {
+          mimeType: "video/webm; codecs=vp9"
         });
-
-        console.log("Stream String");
-        console.log(ndiStream);
-        console.log(ndiStream.getTracks());
+        videoRecorder.ondataavailable = handleRecorderData
+        // recordVideo()
       }).catch(handleError)
 
   } else if (typeof audioElement === 'object' && typeof videoElement === 'object') {
@@ -142,42 +145,32 @@
         deviceId: videoElement.getVideoTracks()[0].getSettings().deviceId,
         exact: true,
         width: {
-          min: 1280,
-          ideal: 3840,
-          max: 3840
+          min: 640,
+          ideal: 640,
+          max: 640
         },
         height: {
-          min: 720,
-          ideal: 2160,
-          max: 2160
+          min: 360,
+          ideal: 360,
+          max: 360
         }
       }
     }
     navigator.mediaDevices.getUserMedia(constraints)
       .then((stream) => {
-        console.log("Stream Object");
-        console.log(ndiStream);
-        console.log(ndiStream.getTracks());
-
+        videoRecorder = new MediaRecorder(stream, {
+          mimeType: "video/webm; codecs=vp9"
+        });
+        videoRecorder.ondataavailable = handleRecorderData
+        // recordVideo()
       }).catch(handleError)
   }
-
-
-  socket.on("disconnectPeer", id => {
-    console.log("disconnectPeer received:::::::");
-  });
-
-  window.onunload = window.onbeforeunload = () => {
-    socket.close();
-  };
-
 
   audioSelect.onchange = getStream;
   videoSelect.onchange = getStream;
 
-  getStream()
-    .then(getDevices)
-    .then(gotDevices);
+  getStream();
+
 
   function getDevices() {
     return navigator.mediaDevices.enumerateDevices();
@@ -222,75 +215,23 @@
           exact: videoSource
         } : undefined,
         width: {
-          min: 1280,
-          ideal: 3840,
-          max: 3840
+          min: 640,
+          ideal: 1920,
+          max: 1920
         },
         height: {
-          min: 720,
-          ideal: 2160,
-          max: 2160
+          min: 360,
+          ideal: 1080,
+          max: 1080
         },
         aspectRatio: 1.777777778,
-        // width: {
-        //   min: 960,
-        //   max: 1440
-        // },
-        // height: {
-        //   min: 720,
-        //   max: 1080
-        // },
-        // frameRate: {
-        //   min: 16,
-        //   max: 30
-        // }
       }
     };
     return navigator.mediaDevices
       .getUserMedia(constraints)
       .then(gotStream)
-      .catch(handleError);
-  }
-
-  function getRecordStream() {
-    if (ndiStream) {
-      ndiStream.getTracks().forEach(track => {
-        track.stop();
-      });
-    }
-    const audioSource = audioSelect.value;
-    selAudioDevice = audioSelect.value;
-    const videoSource = videoSelect.value;
-    selVideoDevice = videoSelect.value;
-
-    const constraints = {
-      audio: {
-        deviceId: audioSource ? {
-          exact: audioSource
-        } : undefined,
-
-      },
-      video: {
-        deviceId: videoSource ? {
-          exact: videoSource
-        } : undefined,
-        width: 640,
-        height: 360
-      }
-    };
-    return navigator.mediaDevices
-      .getUserMedia(constraints)
-      .then((stream) => {
-        ndiStream = stream
-        var mime = 'video/webm';
-        recorder = new MediaRecorder(ndiStream, {
-          mimeType: mime
-        });
-        // make the MediaRecorder to start recording
-        recorder.start(2500);
-
-        recorder.ondataavailable = handleRecorderData
-      })
+      .then(getDevices)
+      .then(gotDevices)
       .catch(handleError);
   }
 
@@ -303,9 +244,18 @@
       option => option.text === stream.getVideoTracks()[0].label
     );
     videoElement.srcObject = stream;
+
+    console.log("Recorder Track in GotStream ::::::");
+    stream.getTracks().forEach((track, i) => {
+      console.log(track.getSettings());
+    });
+    // make the MediaRecorder to start recording
+
+    if (s3UploadFlag) {
+      recordVideo(stream)
+    }
+
     // videoElement.muted = false;
-    socket.emit("broadcaster");
-    console.log("Sending iam a broadcaster::::::: to Server");
   }
 
   function handleError(error) {

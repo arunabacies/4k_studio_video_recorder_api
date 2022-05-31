@@ -1,0 +1,10 @@
+syslog = False
+bind = ['0.0.0.0:5000']
+umask = 0
+user = "user"
+group = "user"
+errorlog = 'errors.log'
+loglevel = 'debug'
+accesslog = 'access.log'
+access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
+timeout = 3600

@@ -1,0 +1,17 @@
+version: '3.3'
+
+services:
+  video-processing:
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: user
+    container_name: video_processor
+    # mem_limit: 2048m
+    command: >
+      sh -c "gunicorn -b 0.0.0.0:5000 --timeout 3600 app.wsgi:app"
+    ports:
+      - 5000:5000
+    env_file:
+      - ./.env

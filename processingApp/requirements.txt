@@ -1,0 +1,6 @@
+flask
+boto3
+gunicorn
+requests
+redis==3.4.1
+rq==1.2.2
