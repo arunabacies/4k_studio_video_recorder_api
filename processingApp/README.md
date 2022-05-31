@@ -7,30 +7,16 @@ The `.env` file is used to define enviroment variables which will be used run th
 - AWS_SECRET_ACCESS_KEY
 - BUCKET_NAME
 
-#### Prerequisite
-- FFMPEG installed in OS
 ## Development Guidelines
 
-### `Install Dependencies`
-Create a virtual environment and then install the required dependencies by running
-```
-cd processingApp
-pip install -r requirements.txt
-```
 ### `Development`
 
 ```
-export FLASK_APP=app.py
-export FLASK_ENV=development
-cd processingApp/app/
-flask run
+docker-compose up
 
 ```
 Code should be updated or modified in `app/app.py` file. After the the modification you can test the app by running the following commands
 ```
-cd processingApp
-flask run
-OR
 docker-compose up  
 ```
 

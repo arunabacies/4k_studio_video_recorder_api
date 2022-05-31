@@ -11,12 +11,12 @@ import json
 # from app.worker import conn
 
 
-SOURCE_BUCKET = os.environ['MEDIA_CAPTURE_BUCKET']
-W_CALL_ACCESS_KEY = os.environ['W_CALL_ACCESS_KEY']
-W_CALL_SECRET_KEY = os.environ['W_CALL_SECRET_KEY']
+SOURCE_BUCKET = os.environ['BUCKET_NAME']
+ACCESS_KEY = os.environ['AWS_ACCESS_KEY_ID']
+SECRET_KEY = os.environ['AWS_SECRET_ACCESS_KEY']
 SOURCE_PREFIX = 'studio'
-s3 = boto3.client('s3', aws_access_key_id=W_CALL_ACCESS_KEY,
-                  aws_secret_access_key=W_CALL_SECRET_KEY)
+s3 = boto3.client('s3', aws_access_key_id=ACCESS_KEY,
+                  aws_secret_access_key=SECRET_KEY)
 
 app = Flask(__name__)
 # q = Queue(connection=conn)
@@ -120,6 +120,7 @@ def handler_process_video(studio_id, session_id, externalUserIds):
         print("Folder Created ::: /ProcessVideo/{}/{}".format(studio_id, session_id))
     else:
         print("Error Creating Folder::: ")
+        return
 
     emptyDir('/ProcessVideo/{}/{}'.format(studio_id, session_id))
 
